@@ -18,6 +18,11 @@ import json
 import sys
 from _ast import Try
 import traceback
+try:
+    from avnrouter import AVNRouter, WpData
+    from avnav_worker import AVNWorker, WorkerParameter, WorkerStatus
+except:
+    pass
 MIN_AVNAV_VERSION="20220425"
 
     #// https://www.rainerstumpe.de/HTML/wind02.html
@@ -28,6 +33,7 @@ MIN_AVNAV_VERSION="20220425"
 
 
 class Plugin(object):
+  PATHWP = "wp.position"
   PATHAWA = "gps.AWA"
   PATHAWD = "gps.AWD"
   PATHAWS = "gps.AWS"
@@ -39,6 +45,7 @@ class Plugin(object):
   PATHTLL_SB="gps.LLSB" #    Winkel Layline Steuerbord
   PATHTLL_BB="gps.LLBB" #    Winkel Layline Backbord
   PATHTLL_VPOL="gps.VPOL" #  Geschwindigkeit aus Polardiagramm basierend auf TWS und TWA 
+  PATHTLL_OPTVMC="gps.OPTVMC" #  Geschwindigkeit aus Polardiagramm basierend auf TWS und TWA 
 #  PATHTLL_speed="gps.speed" #  Geschwindigkeit aus Polardiagramm basierend auf TWS und TWA 
 
 
@@ -76,6 +83,18 @@ class Plugin(object):
       'config': cls.CONFIG,
       
       'data': [
+        {
+          'path': cls.PATHTLL_OPTVMC,
+          'description': 'optimum vmc direction',
+        },
+        {
+          'path': cls.PATHWP,
+          'description': 'Waypont position',
+        },
+        {
+          'path': cls.PATHTLL_speed,
+          'description': 'apparent Wind direction',
+        },
         {
           'path': cls.PATHAWD,
           'description': 'apparent Wind direction',
@@ -152,7 +171,6 @@ class Plugin(object):
     if not self.Polare('polare.xml'):
        raise Exception("polare.xml Error")
        return
-    self.Polare('polare.xml')
     self.saveAllConfig()
     self.startSequence = 0
 
@@ -204,6 +222,7 @@ class Plugin(object):
       gpsdata=self.api.getDataByPrefix('gps')
       calcTrueWind(self, gpsdata)          
       if 'AWS' in gpsdata and 'AWD' in gpsdata and 'TWA' in gpsdata and 'TWS' in gpsdata:
+            best_vmc_angle(self,gpsdata)
             if(calcSailsteer(self, gpsdata)):
                 self.api.addData(self.PATHTWDSS,gpsdata['TSS'])
                 if calc_Laylines(self,gpsdata):  
@@ -415,7 +434,7 @@ def calc_Laylines(self,gpsdata):# // [grad]
         self.api.addData(self.PATHTLL_VPOL,SOGPOLvar*0.514444)
         #self.api.ALLOW_KEY_OVERWRITE=True
         #allowKeyOverwrite=True
-        #self.api.addData("gps.speed",SOGPOLvar*0.514444)
+        #self.api.addData(self.PATHTLL_speed,SOGPOLvar*0.514444)
         return True
         
         # http://forums.sailinganarchy.com/index.php?/topic/132129-calculating-vmc-vs-vmg/
@@ -514,4 +533,88 @@ def toKartesisch(self, alpha):  # // [grad]
         K['y'] = math.sin((alpha * math.pi) / 180)
         return(K)    
 
+try:
+  import numpy as np
+  from scipy.interpolate import InterpolatedUnivariateSpline
 
+  def quadratic_spline_roots(self,spl):
+    roots = []
+    knots = spl.get_knots()
+    for a, b in zip(knots[:-1], knots[1:]):
+        u, v, w = spl(a), spl((a+b)/2), spl(b)
+        t = np.roots([u+w-2*v, w-u, 2*v])
+        t = t[np.isreal(t) & (np.abs(t) <= 1)]
+        roots.extend(t*(b-a)/2 + (b+a)/2)
+    return np.array(roots)
+
+       
+
+    
+  def best_vmc_angle(self, gps):
+    try:
+      router=AVNWorker.findHandlerByName(AVNRouter.getConfigName())
+      if router is None:
+        return
+      wpData=router.getWpData()
+      if wpData is None:
+        return
+      if not wpData.validData and self.ownWpOffSent:
+        return
+    except:
+        pass
+
+      
+      
+      
+      
+    #if avnr.AVNRouter.currentLeg:
+    #avnr.AVNRouter.getCurrentLeg(avnr.AVNRouter)
+    #xy=avnr.WpData(avnr.AVNRouter.currentLeg,gps['lat'],gps['lon'],gps['speed'])
+    #rueckgabewert = urllib.request.urlopen('http://localhost:8081/viewer/avnav_navi.php?request=route&command=getWPData')
+    #route=rueckgabewert.read()
+    #inhalt_text = route.decode("UTF-8")
+    #d = json.loads(inhalt_text)
+    #return True
+
+    try:
+        self.cWendewinkel_upwind=[]
+        self.cWendewinkel_downwind=[]
+    
+        lastindex=len(self.polare['windanglevector'])
+    
+        x = np.array(self.polare['boatspeed'])
+        BRG=wpData.dstBearing
+        windanglerad=np.deg2rad(BRG-gps['TWD']+np.array(self.polare['windanglevector']))
+        coswindanglerad=np.abs(np.cos(windanglerad))
+    
+        self.cWendewinkel_upwind=[]
+        vmc=[]
+        for i in range(len(self.polare['windspeedvector'])):
+            updownindexvalue=next(z for z in self.polare['windanglevector'] if z >=90)
+            updownindex=self.polare['windanglevector'].index(updownindexvalue, 0, lastindex)
+            spalte=i
+            # vmc=v*cos(BRG-HDG)
+            # HDG = TWD +/- TWA
+            # test: BRG = , TWD=0 --> HDG=-TWA --> vmc=v*cos(BRG+TWA)
+            vmc.append(np.array(x[0:lastindex,spalte])*coswindanglerad[0:lastindex])
+            f=InterpolatedUnivariateSpline(self.polare['windanglevector'][0:updownindex], vmc[spalte][0:updownindex], k=3)
+            cr_pts = quadratic_spline_roots(self, f.derivative())
+            cr_vals = f(cr_pts)
+            min_index = np.argmin(cr_vals)
+            max_index = np.argmax(cr_vals)
+        #print("Maximum value {} at {}\nMinimum value {} at {}".format(cr_vals[max_index], cr_pts[max_index], cr_vals[min_index], cr_pts[min_index]))
+            self.cWendewinkel_upwind.append(cr_pts[max_index])
+        wendewinkel = linear((gps['TWS'] / 0.514),self.polare['windspeedvector'],self.cWendewinkel_upwind)
+        self.api.addData(self.PATHTLL_OPTVMC, BRG+wendewinkel,source='SegelDisplay')
+    except:
+        pass
+
+    return(True)
+
+
+
+except:
+  def best_vmc_angle(self,gps):
+      return False;
+  pass    
+    
