@@ -237,6 +237,7 @@ class Plugin(object):
   def strictly_increasing(L):
         return all(x<y for x, y in zip(L, L[1:]))
   
+  
   def Polare(self, f_name):
     #polare_filename = os.path.join(os.path.dirname(__file__), f_name)
     polare_filename = os.path.join(self.api.getDataDir(),'user','viewer','polare.xml')
@@ -320,17 +321,6 @@ class Plugin(object):
       return(b)
     return {'status','unknown request'}
 
-def toPolWinkel(self, x,y): # [grad]
-    return(180*math.atan2(y,x)/math.pi)
-
-
-def toKartesisch(self, alpha):# // [grad]
-  K={}
-  K['x']=math.cos((alpha * math.pi) / 180)
-  K['y']=math.sin((alpha * math.pi) / 180)
-  return(K)    
-  
-  
 
 def bilinear(self,xv, yv, zv, x, y) :
     #ws = xv
@@ -455,12 +445,9 @@ def calcSailsteer(self, gpsdata):
     if not 'track' in gpsdata or not 'AWD' in gpsdata:
         return False
     try:
-        KaW=toKartesisch(self,gpsdata['AWD']);
-        KaW['x'] *= gpsdata['AWS'] #'m/s'
-        KaW['y'] *= gpsdata['AWS'] #'m/s'
-        KaB=toKartesisch(self, gpsdata['track']);
-        KaB['x'] *= gpsdata['speed']  #'m/s'
-        KaB['y'] *= gpsdata['speed']  #'m/s'
+        KaW=polar(gpsdata['AWS'], gpsdata['AWD']).toKartesisch()
+        KaB = polar(gpsdata['speed'], gpsdata['track']).toKartesisch()
+
 
         t_abtast=(time.time()-self.oldtime)
         freq=1/t_abtast
@@ -470,7 +457,7 @@ def calcSailsteer(self, gpsdata):
         self.windAngleSailsteer['x']=self.PT_1funk(fgrenz, t_abtast, self.windAngleSailsteer['x'], KaW['x'] - KaB['x'])
         self.windAngleSailsteer['y']=self.PT_1funk(fgrenz, t_abtast, self.windAngleSailsteer['y'], KaW['y'] - KaB['y'])
       # zurück in Polaren Winkel
-        self.windAngleSailsteer['alpha']=toPolWinkel(self,self.windAngleSailsteer['x'],self.windAngleSailsteer['y']) # [grad]
+        self.windAngleSailsteer['alpha']=kartesisch(self.windAngleSailsteer['x'],self.windAngleSailsteer['y']).toPolar()
         gpsdata['TSS']=self.windAngleSailsteer['alpha']
         
         return True
@@ -493,20 +480,14 @@ def calcTrueWind(self, gpsdata):
         try:
             gpsdata['AWD'] = (gpsdata['AWA'] + gpsdata['track']) % 360
             self.api.addData(self.PATHAWD, gpsdata['AWD'],source=source)
-
-            KaW = toKartesisch(self, gpsdata['AWD'])
-            KaW['x'] *= gpsdata['AWS']  # 'm/s'
-            KaW['y'] *= gpsdata['AWS']  # 'm/s'
-            KaB = toKartesisch(self, gpsdata['track'])
-            KaB['x'] *= gpsdata['speed']  # 'm/s'
-            KaB['y'] *= gpsdata['speed']  # 'm/s'
+            KaW=polar(gpsdata['AWS'], gpsdata['AWD']).toKartesisch()
+            KaB = polar(gpsdata['speed'], gpsdata['track']).toKartesisch()
 
             if(gpsdata['speed'] == 0 or gpsdata['AWS'] == 0):
                 gpsdata['TWD'] = gpsdata['AWD'] 
                 self.api.addData(self.PATHTWD, gpsdata['TWD'],source=source)
             else:
-                test= (toPolWinkel(self, KaW['x'] - KaB['x'], KaW['y'] - KaB['y'])) % 360
-                gpsdata['TWD'] = (toPolWinkel(self, KaW['x'] - KaB['x'], KaW['y'] - KaB['y'])) % 360
+                gpsdata['TWD'] = kartesisch(KaW['x'] - KaB['x'], KaW['y'] - KaB['y']).toPolar() % 360
             self.api.addData(self.PATHTWD, gpsdata['TWD'],source=source)
             gpsdata['TWS'] = math.sqrt((KaW['x'] - KaB['x']) * (KaW['x'] - KaB['x']) + (KaW['y'] - KaB['y']) * (KaW['y'] - KaB['y']))
             self.api.addData(self.PATHTWS, gpsdata['TWS'],source=source)
@@ -524,14 +505,34 @@ def LimitWinkel(self, alpha):  # [grad]
         alpha -= 360;
     return(alpha)  
 
-def toPolWinkel(self, x, y):  # [grad]
-        return(180 * math.atan2(y, x) / math.pi)
 
-def toKartesisch(self, alpha):  # // [grad]
+
+class polar(object):
+    def __init__(self,r, alpha):  # [alpha in deg] 
+        self.r=r
+        self.alpha=alpha
+    def toKartesisch(self):
         K = {}
-        K['x'] = math.cos((alpha * math.pi) / 180)
-        K['y'] = math.sin((alpha * math.pi) / 180)
+        K['x'] = self.r*math.cos((self.alpha * math.pi) / 180)
+        K['y'] = self.r*math.sin((self.alpha * math.pi) / 180)
         return(K)    
+        
+class kartesisch(object):
+    def __init__(self,x, y):  # [alpha in deg] 
+        self.x=x
+        self.y=y
+    def toPolar(self):
+        return(180 * math.atan2(self.y, self.x) / math.pi)
+        K = {}
+        K['x'] = self.r*math.cos((self.alpha * math.pi) / 180)
+        K['y'] = self.r*math.sin((self.alpha * math.pi) / 180)
+        return(K)    
+
+
+
+
+
+
 
 try:
   import numpy as np
@@ -554,14 +555,14 @@ try:
     try:
       router=AVNWorker.findHandlerByName(AVNRouter.getConfigName())
       if router is None:
-        return
+        return False
       wpData=router.getWpData()
       if wpData is None:
-        return
+        return False
       if not wpData.validData and self.ownWpOffSent:
-        return
+        return True
     except:
-        pass
+        return False
 
       
       
