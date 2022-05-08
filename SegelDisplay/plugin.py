@@ -1,18 +1,11 @@
 #the following import is optional
 #it only allows "intelligent" IDEs (like PyCharm) to support you in using it
 from avnav_api import AVNApi
-#from avnav_store import AVNStore
 import math
 import time
 import os
 from datetime import date
 import xml.etree.ElementTree as ET
-#import numpy as np
-#from scipy.interpolate import InterpolatedUnivariateSpline
-#from xml.etree import cElementTree as ElementTree
-#import xmltodict
-#import numpy as np
-#from scipy.interpolate import InterpolatedUnivariateSpline
 import urllib.request, urllib.parse, urllib.error
 import json
 import sys
@@ -20,10 +13,10 @@ from _ast import Try
 import traceback
 try:
     from avnrouter import AVNRouter, WpData
-    from avnav_worker import AVNWorker, WorkerParameter, WorkerStatus
+    from avnav_worker import AVNWorker  #, WorkerParameter, WorkerStatus
 except:
     pass
-MIN_AVNAV_VERSION="20220425"
+MIN_AVNAV_VERSION="20220426"
 
     #// https://www.rainerstumpe.de/HTML/wind02.html
     #// https://www.segeln-forum.de/board1-rund-ums-segeln/board4-seemannschaft/46849-frage-zu-windberechnung/#post1263721
@@ -475,25 +468,25 @@ def calcTrueWind(self, gpsdata):
             return False
         gpsdata['AWA']=gpsdata['windAngle']
         gpsdata['AWS']=gpsdata['windSpeed']
-        self.api.addData(self.PATHAWA, gpsdata['AWA'],source=source)
-        self.api.addData(self.PATHAWS, gpsdata['AWS'],source=source)
+        #self.api.addData(self.PATHAWA, gpsdata['AWA'],source=source)
+        #self.api.addData(self.PATHAWS, gpsdata['AWS'],source=source)
         try:
             gpsdata['AWD'] = (gpsdata['AWA'] + gpsdata['track']) % 360
-            self.api.addData(self.PATHAWD, gpsdata['AWD'],source=source)
+            #self.api.addData(self.PATHAWD, gpsdata['AWD'],source=source)
             KaW=polar(gpsdata['AWS'], gpsdata['AWD']).toKartesisch()
             KaB = polar(gpsdata['speed'], gpsdata['track']).toKartesisch()
 
             if(gpsdata['speed'] == 0 or gpsdata['AWS'] == 0):
                 gpsdata['TWD'] = gpsdata['AWD'] 
-                self.api.addData(self.PATHTWD, gpsdata['TWD'],source=source)
+                #self.api.addData(self.PATHTWD, gpsdata['TWD'],source=source)
             else:
                 gpsdata['TWD'] = kartesisch(KaW['x'] - KaB['x'], KaW['y'] - KaB['y']).toPolar() % 360
-            self.api.addData(self.PATHTWD, gpsdata['TWD'],source=source)
+            #self.api.addData(self.PATHTWD, gpsdata['TWD'],source=source)
             gpsdata['TWS'] = math.sqrt((KaW['x'] - KaB['x']) * (KaW['x'] - KaB['x']) + (KaW['y'] - KaB['y']) * (KaW['y'] - KaB['y']))
-            self.api.addData(self.PATHTWS, gpsdata['TWS'],source=source)
+            #self.api.addData(self.PATHTWS, gpsdata['TWS'],source=source)
 
             gpsdata['TWA'] = LimitWinkel(self, gpsdata['TWD'] - gpsdata['track'])
-            self.api.addData(self.PATHTWA, gpsdata['TWA'],source=source)
+            #self.api.addData(self.PATHTWA, gpsdata['TWA'],source=source)
             return True
         except Exception:
             self.api.error(" error calculating TrueWind-Data " + str(gpsdata) + "\n")

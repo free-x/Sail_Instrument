@@ -1,22 +1,21 @@
 
 
-.SegelDisplayWidget {
+.Sail_InstrumentWidget {
     ￼    display: flex;￼
     ￼    flex-direction: row;
 }
 
-.SegelDisplayWidget canvas.widgetData {
+.Sail_InstrumentWidget canvas.widgetData {
     width: 100%;
     flex-grow: 1;
 }
 
-.userSpecial2line {
+.Sail_InstrumentInfo {
     ￼    display: flex;￼
     ￼    flex-direction: row;
 }
-.userSpecial2line .KDInner {
+.Sail_InstrumentInfo .Sail_InstrumentInfoInner {
+
+    font-size: 1 em;
     position: relative;
-    padding-top: 0.7em;
-    padding-left: 0.3em;
-    padding-right: 0.3em;
-}
+    padding-right: 0.3em;}
